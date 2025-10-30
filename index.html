@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Medimind — Fractal Meditation</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    html, body { margin: 0; height: 100%; background-color: #0a0a0a; color: white; overflow: hidden; }
+    canvas { display: block; margin: auto; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/javascript">
+    const { useEffect, useRef, useState } = React;
+
+    function App() {
+      const canvasRef = useRef(null);
+      const [audioCtx, setAudioCtx] = useState(null);
+      const [playing, setPlaying] = useState(false);
+
+      useEffect(() => {
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        let w = (canvas.width = window.innerWidth);
+        let h = (canvas.height = window.innerHeight);
+
+        function drawFractal(time) {
+          ctx.fillStyle = "rgba(0,0,0,0.1)";
+          ctx.fillRect(0,0,w,h);
+          const t = time * 0.0003;
+          const golden = (1 + Math.sqrt(5)) / 2;
+          ctx.save();
+          ctx.translate(w/2, h/2);
+          for (let i = 0; i < 300; i++) {
+            const angle = i * 137.5 * Math.PI / 180;
+            const radius = Math.sqrt(i) * 20 * Math.sin(t + i / 10);
+            const x = radius * Math.cos(angle);
+            const y = radius * Math.sin(angle);
+            const hue = (i * 5 + time * 0.02) % 360;
+            ctx.fillStyle = `hsl(${hue}, 100%, 60%)`;
+            ctx.beginPath();
+            ctx.arc(x, y, 5, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.restore();
+          requestAnimationFrame(drawFractal);
+        }
+        requestAnimationFrame(drawFractal);
+      }, []);
+
+      function toggleSound() {
+        if (!audioCtx) {
+          const ctx = new AudioContext();
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          const noise = ctx.createBufferSource();
+          const buffer = ctx.createBuffer(1, ctx.sampleRate * 3, ctx.sampleRate);
+          const data = buffer.getChannelData(0);
+          for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+          noise.buffer = buffer;
+          noise.loop = true;
+          const filter = ctx.createBiquadFilter();
+          filter.type = 'lowpass';
+          filter.frequency.value = 500;
+          osc.frequency.value = 220;
+          osc.connect(gain);
+          noise.connect(filter);
+          filter.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start();
+          noise.start();
+          setAudioCtx({ ctx, osc, noise, gain });
+          setPlaying(true);
+        } else {
+          if (playing) {
+            audioCtx.gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.ctx.currentTime + 1);
+            setPlaying(false);
+          } else {
+            audioCtx.gain.gain.value = 0.2;
+            setPlaying(true);
+          }
+        }
+      }
+
+      return (
+        React.createElement("div", { className: "flex flex-col items-center justify-center h-full" },
+          React.createElement("canvas", { ref: canvasRef, className: "w-full h-full absolute top-0 left-0" }),
+          React.createElement("button", {
+            onClick: toggleSound,
+            className: "z-10 bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-full text-lg shadow-lg"
+          }, playing ? "Pause Meditation" : "Start Meditation")
+        )
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+  </script>
+</body>
+</html>
