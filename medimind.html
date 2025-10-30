@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MediMind 🌿 – Calm. Focus. Flow.</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: hidden;
+      transition: background-color 0.6s, color 0.6s;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+
+    canvas {
+      display: block;
+      position: fixed;
+      top: 0;
+      left: 0;
+      z-index: 0;
+    }
+
+    .overlay {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      z-index: 10;
+      background: rgba(255,255,255,0.22);
+      backdrop-filter: blur(12px) saturate(120%);
+      border-radius: 1rem;
+      padding: 0.9rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      transition: all 0.5s;
+      min-width: 200px;
+    }
+
+    .overlay.dark {
+      background: rgba(0,0,0,0.28);
+    }
+
+    label { font-size: 0.85rem; font-weight: 600; }
+
+    select, input[type="range"], button {
+      outline: none;
+      border: none;
+      border-radius: 0.6rem;
+      padding: 0.45rem 0.6rem;
+      background: rgba(255,255,255,0.65);
+      color: #0f172a;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.22s;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    select:hover, button:hover, input[type="range"]:hover {
+      transform: translateY(-2px);
+    }
+
+    button {
+      background: rgba(255,255,255,0.42);
+    }
+
+    .dark select, .dark button {
+      background: rgba(0,0,0,0.42);
+      color: white;
+    }
+
+    .dark select:hover, .dark button:hover {
+      background: rgba(0,0,0,0.6);
+    }
+
+    .title {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      font-family: 'Poppins', sans-serif;
+      z-index: 5;
+      transition: opacity 1s, transform 0.8s;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    .title h1 { letter-spacing: -0.02em; }
+    .title p { margin-top: 0.4rem; opacity: 0.85; font-weight: 500; }
+
+    .dark {
+      background-color: #071023;
+      color: white;
+    }
+
+    .light {
+      background-color: #f8fafc;
+      color: #0f172a;
+    }
+
+    .hidden-ui {
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(-6px);
+      transition: opacity 0.45s, transform 0.45s;
+    }
+
+    /* small responsive tweaks */
+    @media (max-width: 640px) {
+      .overlay { right: 0.6rem; left: 0.6rem; top: auto; bottom: 1rem; flex-direction: row; gap: 0.5rem; padding: 0.6rem; min-width: auto; }
+      label { display: none; }
+      .title h1 { font-size: 2rem; }
+      .title p { display: none; }
+    }
+
+  </style>
+</head>
+
+<body class="light flex items-center justify-center">
+  <canvas id="fractalCanvas"></canvas>
+
+  <div id="title" class="title">
+    <h1 class="text-5xl font-semibold mb-2">MediMind 🌿</h1>
+    <p class="text-lg opacity-80">Find your calm through sound and motion</p>
+  </div>
+
+  <div id="controls" class="overlay" role="region" aria-label="MediMind controls">
+    <button id="themeToggle" aria-pressed="false" title="Toggle light/dark">🌙 Dark Mode</button>
+
+    <label for="soundSelect">🎧 Soundscape</label>
+    <select id="soundSelect" aria-label="Choose ambient sound">
+      <option value="rain">Rain 🌧</option>
+      <option value="ocean">Ocean 🌊</option>
+      <option value="forest">Forest 🌲</option>
+      <option value="piano">Piano 🎹</option>
+      <option value="silence">Silence 🔇</option>
+    </select>
+
+    <label for="volumeControl">🔊 Volume</label>
+    <input id="volumeControl" type="range" min="0" max="1" step="0.01" value="0.40" aria-label="Volume control">
+
+    <label for="patternSelect">🌀 Pattern Type</label>
+    <select id="patternSelect" aria-label="Choose pattern">
+      <option value="spiral">Golden Spiral</option>
+      <option value="tree">Fractal Tree</option>
+      <option value="bloom">Circular Bloom</option>
+      <option value="wave">Wave Flow</option>
+      <option value="dots">Soothing Dots</option>
+    </select>
+
+    <button id="focusToggle" aria-pressed="false" title="Hide controls for focus">🧘 Enter Focus Mode</button>
+  </div>
+
+  <audio id="bgAudio" loop preload="auto"></audio>
+
+  <script>
+    // Elements
+    const canvas = document.getElementById("fractalCanvas");
+    const ctx = canvas.getContext("2d", { alpha: true });
+    const body = document.body;
+    const title = document.getElementById("title");
+    const controls = document.getElementById("controls");
+    const themeToggle = document.getElementById("themeToggle");
+    const focusToggle = document.getElementById("focusToggle");
+    const soundSelect = document.getElementById("soundSelect");
+    const patternSelect = document.getElementById("patternSelect");
+    const volumeControl = document.getElementById("volumeControl");
+    const audio = document.getElementById("bgAudio");
+
+    // State
+    let darkMode = false;
+    let focusMode = false;
+    let pattern = patternSelect.value;
+
+    // Responsive canvas
+    function resizeCanvas() {
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.max(300, Math.floor(window.innerWidth * dpr));
+      canvas.height = Math.max(300, Math.floor(window.innerHeight * dpr));
+      canvas.style.width = window.innerWidth + "px";
+      canvas.style.height = window.innerHeight + "px";
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    window.addEventListener("resize", resizeCanvas);
+    resizeCanvas();
+
+    // Audio resources (royalty-free public URLs)
+    const sounds = {
+      rain: "https://cdn.pixabay.com/download/audio/2021/09/16/audio_4b89a9cc76.mp3",
+      ocean: "https://cdn.pixabay.com/download/audio/2021/09/16/audio_3e1e739f89.mp3",
+      forest: "https://cdn.pixabay.com/download/audio/2022/03/15/audio_640d75e4ee.mp3",
+      piano: "https://cdn.pixabay.com/download/audio/2022/02/23/audio_0e46a2a9f2.mp3",
+      silence: ""
+    };
+
+    function playSound(type) {
+      if (!type || type === "silence") {
+        audio.pause();
+        audio.src = "";
+        return;
+      }
+      if (audio.src !== sounds[type]) {
+        audio.src = sounds[type];
+      }
+      audio.volume = Number(volumeControl.value) || 0.4;
+      audio.play().catch(() => {
+        // Autoplay might be blocked by some browsers; user interaction required.
+      });
+    }
+
+    // initialize
+    playSound(soundSelect.value);
+
+    // UI bindings
+    soundSelect.addEventListener("change", (e) => {
+      playSound(e.target.value);
+    });
+
+    volumeControl.addEventListener("input", (e) => {
+      audio.volume = Number(e.target.value);
+    });
+
+    themeToggle.addEventListener("click", () => {
+      darkMode = !darkMode;
+      body.className = darkMode ? "dark" : "light";
+      controls.classList.toggle("dark", darkMode);
+      themeToggle.textContent = darkMode ? "☀️ Light Mode" : "🌙 Dark Mode";
+      themeToggle.setAttribute("aria-pressed", String(darkMode));
+    });
+
+    focusToggle.addEventListener("click", () => {
+      focusMode = !focusMode;
+      controls.classList.toggle("hidden-ui", focusMode);
+      title.classList.toggle("hidden-ui", focusMode);
+      focusToggle.textContent = focusMode ? "🌿 Exit Focus Mode" : "🧘 Enter Focus Mode";
+      focusToggle.setAttribute("aria-pressed", String(focusMode));
+    });
+
+    patternSelect.addEventListener("change", (e) => {
+      pattern = e.target.value;
+    });
+
+    // Drawing utilities
+
+    // Common parameters
+    let hue = 180;
+    const goldenRatio = 1.61803398875;
+    let t = 0;
+
+    function clear() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function drawSpiral(cx, cy) {
+      // Golden spiral of points
+      const max = 700;
+      for (let i = 0; i < Math.min(max, 1400); i++) {
+        const angle = i * 0.12 + t * 0.002;
+        const r = 3.2 * Math.pow(goldenRatio, angle / (2 * Math.PI));
+        const x = cx + r * Math.cos(angle);
+        const y = cy + r * Math.sin(angle);
+        const light = darkMode ? 70 : 48;
+        ctx.fillStyle = `hsla(${(hue + i * 0.6) % 360}, 70%, ${light}%, 0.55)`;
+        ctx.beginPath();
+        const rad = 1.4 + (i % 6) * 0.4;
+        ctx.arc(x, y, rad, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    function drawTree(cx, cy) {
+      // Recursive fractal tree
+      ctx.save();
+      ctx.translate(cx, cy + 120);
+      function branch(len, angle, depth) {
+        if (depth <= 0 || len < 2) return;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(0, -len);
+        ctx.strokeStyle = `hsla(${(hue + depth * 10) % 360}, 60%, ${darkMode ? 72 : 30}%, 0.9)`;
+        ctx.lineWidth = Math.max(1, depth * 0.9);
+        ctx.stroke();
+        ctx.save();
+        ctx.translate(0, -len);
+        ctx.rotate(angle + Math.sin(t * 0.002 + depth) * 0.02);
+        branch(len * 0.72, angle - 0.36, depth - 1);
+        ctx.rotate(-angle * 2);
+        branch(len * 0.72, angle + 0.36, depth - 1);
+        ctx.restore();
+      }
+      branch(120, 0, 10);
+      ctx.restore();
+    }
+
+    function drawBloom(cx, cy) {
+      // Circular bloom made of concentric arcs
+      const petals = 10;
+      for (let p = 0; p < petals; p++) {
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate((Math.PI * 2 * p) / petals + t * 0.0008);
+        for (let r = 6; r < Math.min(canvas.width, canvas.height) / 2; r += 8) {
+          const s = (r / 6) % 40;
+          ctx.beginPath();
+          ctx.fillStyle = `hsla(${(hue + r * 0.8 + p * 6) % 360}, 68%, ${darkMode ? 74 : 48}%, ${0.28 + (s/80)})`;
+          ctx.arc(r, Math.sin(r * 0.02 + t*0.001) * (4 + p), 2.8, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+    }
+
+    function drawWave(cx, cy) {
+      // flowing sine-wave-like pattern
+      const step = 10;
+      for (let x = -canvas.width/2; x < canvas.width/2; x += step) {
+        const y = Math.sin((x * 0.01) + t*0.003) * (80 + Math.cos(x*0.005 + t*0.002)*40);
+        ctx.beginPath();
+        ctx.fillStyle = `hsla(${(hue + x*0.02) % 360}, 60%, ${darkMode ? 78 : 46}%, 0.6)`;
+        ctx.arc(cx + x, cy + y, 3 + Math.abs(Math.sin(x*0.001 + t*0.001))*2.4, 0, Math.PI*2);
+        ctx.fill();
+      }
+    }
+
+    function drawDots(cx, cy) {
+      // Calm floating dots with subtle motion
+      const count = 180;
+      for (let i = 0; i < count; i++) {
+        const angle = (i / count) * Math.PI * 2;
+        const radius = 120 + (i % 12) * 24 + Math.sin(t*0.001 + i)*12;
+        const x = cx + Math.cos(angle) * radius * (0.6 + Math.sin(i*0.03 + t*0.001)*0.15);
+        const y = cy + Math.sin(angle) * radius * (0.6 + Math.cos(i*0.02 + t*0.001)*0.12);
+        ctx.beginPath();
+        ctx.fillStyle = `hsla(${(hue + i*1.9) % 360}, 60%, ${darkMode ? 72 : 48}%, 0.6)`;
+        ctx.arc(x, y, 2.5 + (i%5)*0.6, 0, Math.PI*2);
+        ctx.fill();
+      }
+    }
+
+    // Animation loop
+    function animate(now) {
+      t = now || performance.now();
+      clear();
+      // center coordinates
+      const cx = window.innerWidth / 2;
+      const cy = window.innerHeight / 2;
+
+      // subtle background gradient overlay
+      const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+      if (darkMode) {
+        grad.addColorStop(0, "rgba(6,12,24,0.14)");
+        grad.addColorStop(1, "rgba(3,6,12,0.18)");
+      } else {
+        grad.addColorStop(0, "rgba(255,255,255,0.06)");
+        grad.addColorStop(1, "rgba(245,252,255,0.06)");
+      }
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // choose pattern
+      ctx.save();
+      ctx.translate(0, 0);
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = 1;
+      if (pattern === "spiral") drawSpiral(cx, cy);
+      else if (pattern === "tree") drawTree(cx, cy);
+      else if (pattern === "bloom") drawBloom(cx, cy);
+      else if (pattern === "wave") drawWave(cx, cy);
+      else if (pattern === "dots") drawDots(cx, cy);
+      ctx.restore();
+
+      // drift hue slowly
+      hue = (hue + 0.06) % 360;
+
+      requestAnimationFrame(animate);
+    }
+
+    // Start animation
+    requestAnimationFrame(animate);
+
+    // Accessibility: keyboard shortcuts
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "f") { // focus toggle
+        focusToggle.click();
+      } else if (e.key === "t") { // theme toggle
+        themeToggle.click();
+      } else if (e.key === " ") { // play/pause sound
+        e.preventDefault();
+        if (audio.paused) audio.play().catch(()=>{});
+        else audio.pause();
+      }
+    });
+
+    // Mild user instruction toast (only first visit)
+    (function instruction() {
+      try {
+        const shown = sessionStorage.getItem("medimind_instructions_shown_v1");
+        if (!shown) {
+          const el = document.createElement("div");
+          el.style.position = "fixed";
+          el.style.left = "50%";
+          el.style.top = "8%";
+          el.style.transform = "translateX(-50%)";
+          el.style.zIndex = 9999;
+          el.style.background = "rgba(0,0,0,0.6)";
+          el.style.color = "white";
+          el.style.padding = "0.6rem 0.9rem";
+          el.style.borderRadius = "0.6rem";
+          el.style.fontWeight = 600;
+          el.style.backdropFilter = "blur(6px)";
+          el.textContent = "Tip: Press 'f' for Focus, 't' to toggle theme, Space to play/pause audio.";
+          document.body.appendChild(el);
+          setTimeout(()=> el.remove(), 8000);
+          sessionStorage.setItem("medimind_instructions_shown_v1", "1");
+        }
+      } catch(e){}
+    })();
+
+  </script>
+</body>
+</html>
